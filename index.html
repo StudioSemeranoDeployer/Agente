@@ -8,12 +8,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
 
     <style>
-        /* CSS IDENTICO AL PRECEDENTE CON MIGLIORAMENTI ERRORI */
         :root { --primary: #2c3e50; --accent: #e67e22; --bg: #f4f7f6; --text: #333; }
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Roboto', sans-serif; }
         body { display: flex; height: 100vh; background-color: var(--bg); color: var(--text); }
         .sidebar { width: 250px; background: var(--primary); color: white; padding: 20px; display: flex; flex-direction: column; }
-        .logo { font-size: 1.5rem; margin-bottom: 40px; }
+        .logo { font-size: 1.5rem; margin-bottom: 40px; font-weight: bold; }
         .menu-item { padding: 15px; cursor: pointer; border-radius: 8px; margin-bottom: 5px; display: flex; gap: 10px; align-items: center; }
         .menu-item:hover, .menu-item.active { background: rgba(255,255,255,0.1); }
         .main { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
@@ -27,6 +26,7 @@
         input { flex: 1; padding: 15px; border: 2px solid #eee; border-radius: 8px; outline: none; }
         button { padding: 15px 30px; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
         .typing { font-style: italic; color: #999; padding: 0 20px; display: none; }
+        .clear-btn { margin-top: auto; background: #c0392b; text-align: center; padding: 10px; border-radius: 5px; cursor: pointer; font-size: 0.8rem; }
     </style>
 </head>
 <body>
@@ -36,52 +36,59 @@
         <div class="menu-item active"><i class="fas fa-home"></i> Dashboard</div>
         <div class="menu-item"><i class="fas fa-building"></i> Progetti</div>
         <div class="menu-item"><i class="fas fa-chart-line"></i> Finanza</div>
-        <div style="margin-top: auto; font-size: 0.8rem; opacity: 0.7;">
-            Stato Memoria: <span id="mem-status">...</span>
+        
+        <div class="clear-btn" onclick="clearMemory()">
+            <i class="fas fa-trash"></i> Cancella Memoria
         </div>
     </div>
 
     <div class="main">
         <div class="chat-box">
             <div class="history" id="chat-history">
-                <div class="msg ai">
-                    <strong>VirtualArchitect</strong><br>
-                    Ciao! Sono operativo. Se la memoria fallisce, continuerò comunque a risponderti.
-                </div>
+                <!-- I messaggi verranno caricati qui -->
             </div>
-            <div class="typing" id="typing">L'architetto sta scrivendo...</div>
+            <div class="typing" id="typing">VirtualArchitect sta scrivendo...</div>
             <div class="input-area">
-                <input type="text" id="user-input" placeholder="Scrivi qui..." onkeypress="if(event.key==='Enter') sendMessage()">
+                <input type="text" id="user-input" placeholder="Chiedi un preventivo o un'analisi..." onkeypress="if(event.key==='Enter') sendMessage()">
                 <button onclick="sendMessage()">Invia</button>
             </div>
         </div>
     </div>
 
     <script>
-        // --- CREDENZIALI INSERITE ---
+        // --- CONFIGURAZIONE ---
         const API_KEY = "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";
-        const BIN_ID = "693efa1343b1c97be9ee02f4";
-        const BIN_KEY = "$2a$10$aMh1mO8btCVSqfcvlxvUJeJ6p.7kHJlSyKz7UjvTu2wqRAQlAcAXe";
         
         const historyDiv = document.getElementById('chat-history');
         const input = document.getElementById('user-input');
         const typing = document.getElementById('typing');
-        const memStatus = document.getElementById('mem-status');
 
-        // --- CHAT LOGIC ---
+        // --- CARICAMENTO MEMORIA (LOCAL STORAGE) ---
+        // Carica la chat salvata nel browser all'avvio
+        window.onload = function() {
+            const savedHistory = JSON.parse(localStorage.getItem('va_chat_history')) || [];
+            if(savedHistory.length === 0) {
+                addMsg('ai', 'VirtualArchitect', 'Ciao! Sono pronto. La memoria è attiva sul tuo browser.');
+            } else {
+                savedHistory.forEach(msg => addMsg(msg.role, msg.sender, msg.text, false));
+                addMsg('ai', 'System', '<i>Cronologia precedente caricata.</i>', false);
+            }
+        };
+
+        // --- INVIO MESSAGGI ---
         async function sendMessage() {
             const text = input.value.trim();
             if (!text) return;
 
-            // UI Utente
-            addMsg('user', 'Tu', text);
+            // 1. Mostra messaggio utente
+            addMsg('user', 'Tu', text, true);
             input.value = '';
             typing.style.display = 'block';
 
-            const systemPrompt = "Sei VirtualArchitect, esperto di architettura e finanza. Rispondi in italiano.";
+            const systemPrompt = "Sei VirtualArchitect, un esperto senior di architettura e finanza immobiliare. Rispondi in modo tecnico e preciso in italiano.";
 
             try {
-                // CHIAMATA AI (OpenRouter)
+                // 2. Chiamata AI
                 const req = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                     method: "POST",
                     headers: {
@@ -99,88 +106,50 @@
                     })
                 });
 
-                if(!req.ok) {
-                    const errData = await req.json();
-                    throw new Error(errData.error?.message || "Errore API AI");
-                }
+                if(!req.ok) throw new Error("Errore connessione AI");
 
                 const data = await req.json();
                 const aiText = data.choices[0].message.content;
 
+                // 3. Mostra risposta AI
                 typing.style.display = 'none';
-                addMsg('ai', 'VirtualArchitect', formatText(aiText));
-
-                // PROVA A SALVARE (Senza bloccare se fallisce)
-                saveToJsonBin(text, aiText);
+                addMsg('ai', 'VirtualArchitect', formatText(aiText), true);
 
             } catch (error) {
                 typing.style.display = 'none';
-                addMsg('error', 'Errore', error.message);
-                console.error(error);
+                addMsg('error', 'Errore', error.message, false);
             }
         }
 
-        // --- MEMORIA LOGIC (Protetta da errori) ---
-        async function saveToJsonBin(userMsg, aiMsg) {
-            memStatus.innerText = "Salvataggio...";
-            memStatus.style.color = "orange";
-
-            try {
-                // 1. Leggi dati attuali
-                let res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
-                    headers: { "X-Master-Key": BIN_KEY }
-                });
-                
-                if(res.status === 404 || res.status === 403 || res.status === 401) {
-                    throw new Error("Credenziali JSONBin non valide (Bin non trovato o accesso negato).");
-                }
-
-                let json = await res.json();
-                let history = json.record.history || [];
-
-                // 2. Aggiungi nuovo
-                history.push({ user: userMsg, ai: aiMsg, time: new Date().toISOString() });
-
-                // 3. Scrivi aggiornamento
-                let saveRes = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
-                    method: "PUT",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-Master-Key": BIN_KEY
-                    },
-                    body: JSON.stringify({ history: history, progetti: json.record.progetti || [] })
-                });
-
-                if(saveRes.ok) {
-                    memStatus.innerText = "Online";
-                    memStatus.style.color = "#2ecc71";
-                    console.log("Memoria salvata.");
-                } else {
-                    throw new Error("Errore scrittura");
-                }
-
-            } catch (e) {
-                console.warn("Memoria fallita:", e);
-                memStatus.innerText = "Offline (Solo Chat)";
-                memStatus.style.color = "red";
-                // Non mostriamo errore in chat per non disturbare l'utente, ma l'AI funziona.
-            }
-        }
-
-        function addMsg(role, sender, text) {
+        // --- GESTIONE UI E SALVATAGGIO ---
+        function addMsg(role, sender, text, save = false) {
             const d = document.createElement('div');
             d.className = `msg ${role}`;
             d.innerHTML = `<strong>${sender}</strong><br>${text}`;
             historyDiv.appendChild(d);
             historyDiv.scrollTop = historyDiv.scrollHeight;
+
+            if(save) {
+                saveToLocal(role, sender, text);
+            }
+        }
+
+        function saveToLocal(role, sender, text) {
+            const current = JSON.parse(localStorage.getItem('va_chat_history')) || [];
+            current.push({ role, sender, text });
+            localStorage.setItem('va_chat_history', JSON.stringify(current));
+        }
+
+        function clearMemory() {
+            if(confirm("Vuoi cancellare tutta la memoria della chat?")) {
+                localStorage.removeItem('va_chat_history');
+                location.reload();
+            }
         }
 
         function formatText(text) {
             return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
         }
-        
-        // Test connessione avvio
-        memStatus.innerText = "Verifica...";
     </script>
 </body>
 </html>
