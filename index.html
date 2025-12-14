@@ -21,7 +21,7 @@
         .msg { max-width: 80%; padding: 15px; border-radius: 12px; line-height: 1.5; font-size: 0.95rem; }
         .msg.user { align-self: flex-end; background: var(--primary); color: white; }
         .msg.ai { align-self: flex-start; background: #ecf0f1; color: #2c3e50; border: 1px solid #ddd; }
-        .msg.error { align-self: center; background: #fee; color: #c0392b; border: 1px solid #e74c3c; width: 100%; text-align: center; }
+        .msg.error { align-self: center; background: #fee; color: #c0392b; border: 1px solid #e74c3c; width: 90%; text-align: center; font-weight: bold; }
         .input-area { padding: 20px; background: white; border-top: 1px solid #eee; display: flex; gap: 10px; }
         input { flex: 1; padding: 15px; border: 2px solid #eee; border-radius: 8px; outline: none; }
         button { padding: 15px 30px; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
@@ -36,59 +36,52 @@
         <div class="menu-item active"><i class="fas fa-home"></i> Dashboard</div>
         <div class="menu-item"><i class="fas fa-building"></i> Progetti</div>
         <div class="menu-item"><i class="fas fa-chart-line"></i> Finanza</div>
-        
-        <div class="clear-btn" onclick="clearMemory()">
-            <i class="fas fa-trash"></i> Cancella Memoria
-        </div>
+        <div class="clear-btn" onclick="clearMemory()"><i class="fas fa-trash"></i> Reset Chat</div>
     </div>
 
     <div class="main">
         <div class="chat-box">
-            <div class="history" id="chat-history">
-                <!-- I messaggi verranno caricati qui -->
-            </div>
-            <div class="typing" id="typing">VirtualArchitect sta scrivendo...</div>
+            <div class="history" id="chat-history"></div>
+            <div class="typing" id="typing">Connessione in corso...</div>
             <div class="input-area">
-                <input type="text" id="user-input" placeholder="Chiedi un preventivo o un'analisi..." onkeypress="if(event.key==='Enter') sendMessage()">
+                <input type="text" id="user-input" placeholder="Scrivi qui..." onkeypress="if(event.key==='Enter') sendMessage()">
                 <button onclick="sendMessage()">Invia</button>
             </div>
         </div>
     </div>
 
     <script>
-        // --- CONFIGURAZIONE ---
-        const API_KEY = "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";
-        
+        // ============================================================
+        // ⚠️ INSERISCI QUI LA TUA NUOVA CHIAVE API TRA LE VIRGOLETTE
+        const API_KEY = "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"; 
+        // ============================================================
+
         const historyDiv = document.getElementById('chat-history');
         const input = document.getElementById('user-input');
         const typing = document.getElementById('typing');
 
-        // --- CARICAMENTO MEMORIA (LOCAL STORAGE) ---
-        // Carica la chat salvata nel browser all'avvio
+        // Carica memoria locale
         window.onload = function() {
-            const savedHistory = JSON.parse(localStorage.getItem('va_chat_history')) || [];
-            if(savedHistory.length === 0) {
-                addMsg('ai', 'VirtualArchitect', 'Ciao! Sono pronto. La memoria è attiva sul tuo browser.');
-            } else {
-                savedHistory.forEach(msg => addMsg(msg.role, msg.sender, msg.text, false));
-                addMsg('ai', 'System', '<i>Cronologia precedente caricata.</i>', false);
-            }
+            const saved = JSON.parse(localStorage.getItem('va_chat_history')) || [];
+            if(saved.length === 0) addMsg('ai', 'VirtualArchitect', 'Ciao! Inserisci la chiave API nel codice e iniziamo.');
+            else saved.forEach(m => addMsg(m.role, m.sender, m.text, false));
         };
 
-        // --- INVIO MESSAGGI ---
         async function sendMessage() {
             const text = input.value.trim();
             if (!text) return;
+            
+            // Controllo se l'utente ha cambiato la chiave
+            if(API_KEY.includes("INSERISCI_QUI")) {
+                alert("Devi aprire il file index.html e inserire la tua API KEY alla riga 68!");
+                return;
+            }
 
-            // 1. Mostra messaggio utente
             addMsg('user', 'Tu', text, true);
             input.value = '';
             typing.style.display = 'block';
 
-            const systemPrompt = "Sei VirtualArchitect, un esperto senior di architettura e finanza immobiliare. Rispondi in modo tecnico e preciso in italiano.";
-
             try {
-                // 2. Chiamata AI
                 const req = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                     method: "POST",
                     headers: {
@@ -98,58 +91,59 @@
                         "X-Title": "VirtualArchitect"
                     },
                     body: JSON.stringify({
-                        "model": "google/gemini-2.0-flash-exp:free",
+                        "model": "google/gemini-2.0-flash-exp:free", // Modello Free
                         "messages": [
-                            { "role": "system", "content": systemPrompt },
+                            { "role": "system", "content": "Sei un architetto esperto. Rispondi in italiano." },
                             { "role": "user", "content": text }
                         ]
                     })
                 });
 
-                if(!req.ok) throw new Error("Errore connessione AI");
+                // GESTIONE ERRORI DETTAGLIATA
+                if(!req.ok) {
+                    const errData = await req.json();
+                    console.error("Errore API:", errData);
+                    // Mostra il messaggio esatto dell'errore
+                    throw new Error(errData.error?.message || `Errore HTTP: ${req.status}`);
+                }
 
                 const data = await req.json();
-                const aiText = data.choices[0].message.content;
+                
+                // Controllo se la risposta è vuota
+                if(!data.choices || data.choices.length === 0) {
+                    throw new Error("L'AI non ha generato nessuna risposta.");
+                }
 
-                // 3. Mostra risposta AI
+                const aiText = data.choices[0].message.content;
                 typing.style.display = 'none';
                 addMsg('ai', 'VirtualArchitect', formatText(aiText), true);
 
             } catch (error) {
                 typing.style.display = 'none';
-                addMsg('error', 'Errore', error.message, false);
+                // Mostra l'errore in rosso nella chat
+                addMsg('error', 'ERRORE SISTEMA', error.message, false);
             }
         }
 
-        // --- GESTIONE UI E SALVATAGGIO ---
         function addMsg(role, sender, text, save = false) {
             const d = document.createElement('div');
             d.className = `msg ${role}`;
             d.innerHTML = `<strong>${sender}</strong><br>${text}`;
             historyDiv.appendChild(d);
             historyDiv.scrollTop = historyDiv.scrollHeight;
-
             if(save) {
-                saveToLocal(role, sender, text);
+                const current = JSON.parse(localStorage.getItem('va_chat_history')) || [];
+                current.push({ role, sender, text });
+                localStorage.setItem('va_chat_history', JSON.stringify(current));
             }
-        }
-
-        function saveToLocal(role, sender, text) {
-            const current = JSON.parse(localStorage.getItem('va_chat_history')) || [];
-            current.push({ role, sender, text });
-            localStorage.setItem('va_chat_history', JSON.stringify(current));
         }
 
         function clearMemory() {
-            if(confirm("Vuoi cancellare tutta la memoria della chat?")) {
-                localStorage.removeItem('va_chat_history');
-                location.reload();
-            }
+            localStorage.removeItem('va_chat_history');
+            location.reload();
         }
 
-        function formatText(text) {
-            return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
-        }
+        function formatText(t) { return t.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>'); }
     </script>
 </body>
 </html>
